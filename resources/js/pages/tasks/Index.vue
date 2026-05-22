@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
 import {
-    type ColumnFiltersState,
+    
     FlexRender,
     createColumnHelper,
     functionalUpdate,
     getCoreRowModel,
     getFilteredRowModel,
     getSortedRowModel,
-    useVueTable,
-    type SortingState,
+    useVueTable
+    
 } from '@tanstack/vue-table';
-import { dashboard } from '@/routes';
+import type {ColumnFiltersState, SortingState} from '@tanstack/vue-table';
+import { Check, Copy } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -29,6 +30,7 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { dashboard } from '@/routes';
 import type { User } from '@/types';
 
 type Designer = Pick<User, 'id' | 'name' | 'email'>;
@@ -60,12 +62,21 @@ type TaskItem = {
 };
 
 const props = defineProps<{
-    tasks: TaskItem[];
+    tasks: {
+        data: TaskItem[];
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+        from: number | null;
+        to: number | null;
+    };
     designers: Designer[];
     filters: {
         sku: string;
         status: '' | 'DONE' | 'in progress' | 'Upcoming' | 'Wait for FBs';
         designer_id: number | null;
+        per_page: number;
     };
 }>();
 
@@ -157,22 +168,8 @@ const allColumns: TaskColumn[] = [
     { key: 'due_date', label: 'Due' },
 ];
 
-const rowsToShow = ref<string>('50');
+const rowsToShow = ref<string>(String(props.filters.per_page ?? props.tasks.per_page ?? 50));
 const selectedColumnKeys = ref<TaskColumn['key'][]>(allColumns.map((column) => column.key));
-
-const rowLimit = computed(() => {
-    if (rowsToShow.value === 'all') {
-        return Number.POSITIVE_INFINITY;
-    }
-
-    const limit = Number.parseInt(rowsToShow.value, 10);
-
-    if (Number.isNaN(limit) || limit <= 0) {
-        return Number.POSITIVE_INFINITY;
-    }
-
-    return limit;
-});
 
 const visibleColumns = computed(() => {
     if (selectedColumnKeys.value.length === 0) {
@@ -188,6 +185,8 @@ const columnHelper = createColumnHelper<TaskItem>();
 const editingCell = ref<{ taskId: number; columnKey: TaskColumn['key'] } | null>(null);
 const editingValue = ref('');
 const isSavingInlineEdit = ref(false);
+const copiedField = ref<null | 'sku' | 'job_number' | 'gpm_note' | 'gd_notes'>(null);
+let copyFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
 type EditableField =
     | 'theme'
@@ -249,10 +248,34 @@ const filteredDesigners = computed(() => {
 function toggleDesigner(designerId: number, checked: boolean): void {
     if (checked) {
         createForm.designer_ids = [...new Set([...createForm.designer_ids, designerId])];
+
         return;
     }
 
     createForm.designer_ids = createForm.designer_ids.filter((id) => id !== designerId);
+}
+
+async function copyFieldValue(field: 'sku' | 'job_number' | 'gpm_note' | 'gd_notes', value: string): Promise<void> {
+    const textToCopy = value.trim();
+
+    if (!textToCopy) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(textToCopy);
+        copiedField.value = field;
+
+        if (copyFeedbackTimeout) {
+            clearTimeout(copyFeedbackTimeout);
+        }
+
+        copyFeedbackTimeout = setTimeout(() => {
+            copiedField.value = null;
+        }, 1200);
+    } catch {
+        copiedField.value = null;
+    }
 }
 
 function submitCreate(): void {
@@ -289,16 +312,61 @@ function submitCreate(): void {
 }
 
 function applyFilters(): void {
-    router.get('/tasks', {
-        sku: filterForm.sku || undefined,
-        status: filterForm.status || undefined,
-        designer_id: filterForm.designer_id || undefined,
-    }, { preserveState: true, replace: true });
+    router.get(
+        '/tasks',
+        {
+            sku: filterForm.sku || undefined,
+            status: filterForm.status || undefined,
+            designer_id: filterForm.designer_id || undefined,
+            per_page: Number.parseInt(rowsToShow.value, 10) || 50,
+            page: 1,
+        },
+        { preserveState: true, replace: true },
+    );
 }
 
 function resetFilters(): void {
     filterForm.reset();
-    router.get('/tasks', {}, { preserveState: true, replace: true });
+    router.get(
+        '/tasks',
+        {
+            per_page: Number.parseInt(rowsToShow.value, 10) || 50,
+            page: 1,
+        },
+        { preserveState: true, replace: true },
+    );
+}
+
+function goToPage(pageNumber: number): void {
+    if (pageNumber < 1 || pageNumber > props.tasks.last_page || pageNumber === props.tasks.current_page) {
+        return;
+    }
+
+    router.get(
+        '/tasks',
+        {
+            sku: filterForm.sku || undefined,
+            status: filterForm.status || undefined,
+            designer_id: filterForm.designer_id || undefined,
+            per_page: Number.parseInt(rowsToShow.value, 10) || 50,
+            page: pageNumber,
+        },
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
+}
+
+function updatePerPage(): void {
+    router.get(
+        '/tasks',
+        {
+            sku: filterForm.sku || undefined,
+            status: filterForm.status || undefined,
+            designer_id: filterForm.designer_id || undefined,
+            per_page: Number.parseInt(rowsToShow.value, 10) || 50,
+            page: 1,
+        },
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
 }
 
 function updateStatus(taskId: number, status: Exclude<TaskItem['project_status'], null>): void {
@@ -306,17 +374,37 @@ function updateStatus(taskId: number, status: Exclude<TaskItem['project_status']
 }
 
 function statusClasses(status: Exclude<TaskItem['project_status'], null>): string {
-    if (status === 'DONE') return 'border-emerald-300 bg-emerald-50 text-emerald-800';
-    if (status === 'in progress') return 'border-blue-300 bg-blue-50 text-blue-800';
-    if (status === 'Wait for FBs') return 'border-rose-300 bg-rose-50 text-rose-800';
+    if (status === 'DONE') {
+return 'border-emerald-300 bg-emerald-50 text-emerald-800';
+}
+
+    if (status === 'in progress') {
+return 'border-blue-300 bg-blue-50 text-blue-800';
+}
+
+    if (status === 'Wait for FBs') {
+return 'border-rose-300 bg-rose-50 text-rose-800';
+}
+
     return 'border-amber-300 bg-amber-50 text-amber-800';
 }
 
 function getColumnValue(task: TaskItem, key: TaskColumn['key']): string {
-    if (key === 'gpm') return task.gpm?.name ?? 'Unassigned';
-    if (key === 'designers') return task.designers.map((designer) => designer.name).join(', ');
-    if (key === 'due_date') return task.due_date ?? '-';
-    if (key === 'description') return task.description ?? '-';
+    if (key === 'gpm') {
+return task.gpm?.name ?? 'Unassigned';
+}
+
+    if (key === 'designers') {
+return task.designers.map((designer) => designer.name).join(', ');
+}
+
+    if (key === 'due_date') {
+return task.due_date ?? '-';
+}
+
+    if (key === 'description') {
+return task.description ?? '-';
+}
 
     const value = task[key as keyof TaskItem];
 
@@ -348,6 +436,7 @@ function cancelCellEdit(): void {
 
 async function saveCellEdit(task: TaskItem, columnKey: TaskColumn['key']): Promise<void> {
     const field = editableColumnFieldMap[columnKey];
+
     if (!field || isSavingInlineEdit.value) {
         return;
     }
@@ -378,6 +467,7 @@ function isEditingCell(taskId: number, columnKey: TaskColumn['key']): boolean {
 function toggleColumn(key: TaskColumn['key'], checked: boolean): void {
     if (checked) {
         selectedColumnKeys.value = [...new Set([...selectedColumnKeys.value, key])];
+
         return;
     }
 
@@ -410,7 +500,7 @@ const tableColumns = computed(() =>
 
 const table = useVueTable({
     get data() {
-        return props.tasks;
+        return props.tasks.data;
     },
     get columns() {
         return tableColumns.value;
@@ -435,12 +525,26 @@ const table = useVueTable({
 });
 
 const visibleRows = computed(() => {
-    const rows = table.getRowModel().rows;
-    if (!Number.isFinite(rowLimit.value)) {
-        return rows;
+    return table.getRowModel().rows;
+});
+
+const paginationRange = computed(() => {
+    const current = props.tasks.current_page;
+    const last = props.tasks.last_page;
+
+    if (last <= 7) {
+        return Array.from({ length: last }, (_, index) => index + 1);
     }
 
-    return rows.slice(0, rowLimit.value);
+    if (current <= 4) {
+        return [1, 2, 3, 4, 5, -1, last];
+    }
+
+    if (current >= last - 3) {
+        return [1, -1, last - 4, last - 3, last - 2, last - 1, last];
+    }
+
+    return [1, -1, current - 1, current, current + 1, -1, last];
 });
 
 defineOptions({
@@ -481,7 +585,18 @@ defineOptions({
 
                         <form class="grid gap-4 md:grid-cols-2" @submit.prevent="submitCreate">
                             <label class="grid gap-1 text-sm">
-                                <span>SKU</span>
+                                <span class="flex items-center justify-between gap-2">
+                                    <span>SKU</span>
+                                    <button
+                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                        type="button"
+                                        @click="copyFieldValue('sku', createForm.sku)"
+                                    >
+                                        <Check v-if="copiedField === 'sku'" class="h-3.5 w-3.5" />
+                                        <Copy v-else class="h-3.5 w-3.5" />
+                                        <span>{{ copiedField === 'sku' ? 'Copied' : 'Copy' }}</span>
+                                    </button>
+                                </span>
                                 <input v-model="createForm.sku" class="rounded-md border bg-white px-3 py-2" type="text" />
                                 <span v-if="createForm.errors.sku" class="text-xs text-red-600">{{ createForm.errors.sku }}</span>
                             </label>
@@ -578,17 +693,50 @@ defineOptions({
                             </label>
 
                             <label class="grid gap-1 text-sm">
-                                <span>Job Number</span>
+                                <span class="flex items-center justify-between gap-2">
+                                    <span>Job Number</span>
+                                    <button
+                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                        type="button"
+                                        @click="copyFieldValue('job_number', createForm.job_number)"
+                                    >
+                                        <Check v-if="copiedField === 'job_number'" class="h-3.5 w-3.5" />
+                                        <Copy v-else class="h-3.5 w-3.5" />
+                                        <span>{{ copiedField === 'job_number' ? 'Copied' : 'Copy' }}</span>
+                                    </button>
+                                </span>
                                 <input v-model="createForm.job_number" class="rounded-md border bg-white px-3 py-2" type="text" />
                             </label>
 
                             <label class="grid gap-1 text-sm md:col-span-2">
-                                <span>GPM Note</span>
+                                <span class="flex items-center justify-between gap-2">
+                                    <span>GPM Note</span>
+                                    <button
+                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                        type="button"
+                                        @click="copyFieldValue('gpm_note', createForm.gpm_note)"
+                                    >
+                                        <Check v-if="copiedField === 'gpm_note'" class="h-3.5 w-3.5" />
+                                        <Copy v-else class="h-3.5 w-3.5" />
+                                        <span>{{ copiedField === 'gpm_note' ? 'Copied' : 'Copy' }}</span>
+                                    </button>
+                                </span>
                                 <textarea v-model="createForm.gpm_note" class="min-h-20 rounded-md border bg-white px-3 py-2" />
                             </label>
 
                             <label class="grid gap-1 text-sm md:col-span-2">
-                                <span>GD Notes</span>
+                                <span class="flex items-center justify-between gap-2">
+                                    <span>GD Notes</span>
+                                    <button
+                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                        type="button"
+                                        @click="copyFieldValue('gd_notes', createForm.gd_notes)"
+                                    >
+                                        <Check v-if="copiedField === 'gd_notes'" class="h-3.5 w-3.5" />
+                                        <Copy v-else class="h-3.5 w-3.5" />
+                                        <span>{{ copiedField === 'gd_notes' ? 'Copied' : 'Copy' }}</span>
+                                    </button>
+                                </span>
                                 <textarea v-model="createForm.gd_notes" class="min-h-20 rounded-md border bg-white px-3 py-2" />
                             </label>
 
@@ -681,12 +829,11 @@ defineOptions({
 
                 <div class="flex flex-col gap-3 text-sm md:flex-row md:items-end">
                     <label class="grid gap-1">
-                        <span>Rows to show</span>
-                        <select v-model="rowsToShow" class="rounded-md border px-3 py-2">
+                        <span>Rows per page</span>
+                        <select v-model="rowsToShow" class="rounded-md border px-3 py-2" @change="updatePerPage">
                             <option value="25">25</option>
                             <option value="50">50</option>
                             <option value="100">100</option>
-                            <option value="all">All</option>
                         </select>
                     </label>
 
@@ -830,6 +977,45 @@ defineOptions({
                         </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-3 text-sm md:flex-row md:items-center md:justify-between">
+                <p class="text-muted-foreground">
+                    Showing {{ props.tasks.from ?? 0 }}-{{ props.tasks.to ?? 0 }} of {{ props.tasks.total }} tasks
+                </p>
+
+                <div class="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="props.tasks.current_page <= 1"
+                        @click="goToPage(props.tasks.current_page - 1)"
+                    >
+                        Previous
+                    </Button>
+
+                    <template v-for="(item, index) in paginationRange" :key="`${item}-${index}`">
+                        <span v-if="item === -1" class="px-1 text-muted-foreground">...</span>
+                        <Button
+                            v-else
+                            :variant="item === props.tasks.current_page ? 'default' : 'outline'"
+                            size="sm"
+                            class="min-w-9"
+                            @click="goToPage(item)"
+                        >
+                            {{ item }}
+                        </Button>
+                    </template>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="props.tasks.current_page >= props.tasks.last_page"
+                        @click="goToPage(props.tasks.current_page + 1)"
+                    >
+                        Next
+                    </Button>
+                </div>
             </div>
         </section>
     </div>

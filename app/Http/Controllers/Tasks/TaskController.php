@@ -33,7 +33,10 @@ class TaskController extends Controller
             'sku' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'string', Rule::in($allowedProjectStatuses)],
             'designer_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where(fn ($query) => $query->where('role', 'designer'))],
+            'per_page' => ['nullable', 'integer', Rule::in([25, 50, 100])],
         ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 50);
 
         $tasks = Task::query()
             ->with(['gpm:id,name,email', 'designers:id,name,email'])
@@ -41,7 +44,8 @@ class TaskController extends Controller
             ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('project_status', $status))
             ->when($validated['designer_id'] ?? null, fn ($query, $designerId) => $query->whereHas('designers', fn ($q) => $q->where('users.id', $designerId)))
             ->latest()
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
 
         return Inertia::render('tasks/Index', [
             'tasks' => $tasks,
@@ -53,6 +57,7 @@ class TaskController extends Controller
                 'sku' => $validated['sku'] ?? '',
                 'status' => $validated['status'] ?? '',
                 'designer_id' => $validated['designer_id'] ?? null,
+                'per_page' => $perPage,
             ],
         ]);
     }
@@ -318,7 +323,11 @@ class TaskController extends Controller
             }
         });
 
-        return back()->with('success', "Import complete. Created: {$created}, Updated: {$updated}, Skipped: {$skipped}.");
+        $message = "Import complete. Created: {$created}, Updated: {$updated}, Skipped: {$skipped}.";
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+
+        return back()->with('success', $message);
     }
 
     private function resolveImportFilePath(UploadedFile $sourceFile): string

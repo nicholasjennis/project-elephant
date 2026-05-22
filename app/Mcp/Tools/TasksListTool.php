@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Models\Task;
+use App\Support\WfPlanWeek;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Validation\Rule;
 use Laravel\Mcp\Request;
@@ -28,9 +29,14 @@ class TasksListTool extends Tool
             'due_after' => ['nullable', 'date'],
             'search' => ['nullable', 'string', 'max:255'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'week_number' => ['nullable', 'integer', 'min:1', 'max:53'],
+            'current_week' => ['nullable', 'boolean'],
         ]);
 
         $limit = (int) ($validated['limit'] ?? 25);
+        $weekNumber = isset($validated['week_number'])
+            ? (int) $validated['week_number']
+            : ((bool) ($validated['current_week'] ?? false) ? now()->isoWeek() : null);
 
         $query = Task::query()
             ->with(['gpm:id,name,email', 'designers:id,name,email'])
@@ -52,15 +58,21 @@ class TasksListTool extends Tool
                         ->orWhere('job_number', 'like', "%{$search}%");
                 });
             })
-            ->latest();
+            ->latest()
+            ->get();
 
-        $tasks = $query->limit($limit)->get();
+        if ($weekNumber !== null) {
+            $query = $query->filter(fn (Task $task) => WfPlanWeek::matchesWeekNumber($task->wf_plan_week, $weekNumber));
+        }
+
+        $tasks = $query->take($limit)->values();
 
         return Response::json([
             'generated_at' => now()->toIso8601String(),
             'timezone' => config('app.timezone'),
             'count' => $tasks->count(),
             'limit' => $limit,
+            'week_number' => $weekNumber,
             'tasks' => $tasks->map(fn (Task $task) => [
                 'id' => $task->id,
                 'sku' => $task->sku,
@@ -80,6 +92,7 @@ class TasksListTool extends Tool
                 ])->values()->all(),
                 'priority' => $task->priority,
                 'assets_status' => $task->assets_status,
+                'wf_plan_week' => $task->wf_plan_week,
                 'gpm_note' => $task->gpm_note,
                 'gd_notes' => $task->gd_notes,
             ])->values()->all(),
@@ -103,6 +116,8 @@ class TasksListTool extends Tool
             'due_after' => $schema->string()->format('date')->description('Include tasks due on or after this date (YYYY-MM-DD).'),
             'search' => $schema->string()->description('Free-text search across SKU, phase task, description, notes, and job number.'),
             'limit' => $schema->integer()->min(1)->max(100)->description('Max number of tasks to return. Defaults to 25.'),
+            'week_number' => $schema->integer()->min(1)->max(53)->description('Filter tasks by WF plan week number (1-53).'),
+            'current_week' => $schema->boolean()->description('If true, filters by the current ISO week number.'),
         ];
     }
 }

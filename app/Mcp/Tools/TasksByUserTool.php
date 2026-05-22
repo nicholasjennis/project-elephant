@@ -4,6 +4,7 @@ namespace App\Mcp\Tools;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Support\WfPlanWeek;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Validation\Rule;
 use Laravel\Mcp\Request;
@@ -25,6 +26,8 @@ class TasksByUserTool extends Tool
             'role' => ['nullable', Rule::in(['gpm', 'designer', 'any'])],
             'status' => ['nullable', Rule::in(['DONE', 'in progress', 'Upcoming', 'Wait for FBs'])],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'week_number' => ['nullable', 'integer', 'min:1', 'max:53'],
+            'current_week' => ['nullable', 'boolean'],
         ]);
 
         if (! isset($validated['user_id']) && ! isset($validated['user_name'])) {
@@ -44,12 +47,14 @@ class TasksByUserTool extends Tool
 
         $limit = (int) ($validated['limit'] ?? 25);
         $role = $validated['role'] ?? 'any';
+        $weekNumber = isset($validated['week_number'])
+            ? (int) $validated['week_number']
+            : ((bool) ($validated['current_week'] ?? false) ? now()->isoWeek() : null);
 
         $query = Task::query()
             ->with(['gpm:id,name,email', 'designers:id,name,email'])
             ->when($validated['status'] ?? null, fn ($q, $status) => $q->where('project_status', $status))
-            ->latest()
-            ->limit($limit);
+            ->latest();
 
         if ($role === 'gpm') {
             $query->where('gpm_user_id', $user->id);
@@ -65,10 +70,17 @@ class TasksByUserTool extends Tool
 
         $tasks = $query->get();
 
+        if ($weekNumber !== null) {
+            $tasks = $tasks->filter(fn (Task $task) => WfPlanWeek::matchesWeekNumber($task->wf_plan_week, $weekNumber))->values();
+        }
+
+        $tasks = $tasks->take($limit)->values();
+
         return Response::json([
             'generated_at' => now()->toIso8601String(),
             'timezone' => config('app.timezone'),
             'requested_role' => $role,
+            'week_number' => $weekNumber,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -82,6 +94,7 @@ class TasksByUserTool extends Tool
                 'phase_task' => $task->phase_task,
                 'project_status' => $task->project_status,
                 'due_date' => $task->due_date,
+                'wf_plan_week' => $task->wf_plan_week,
                 'job_number' => $task->job_number,
                 'gpm' => $task->gpm?->name,
                 'designers' => $task->designers->pluck('name')->values()->all(),
@@ -102,6 +115,8 @@ class TasksByUserTool extends Tool
             'role' => $schema->string()->enum(['gpm', 'designer', 'any'])->description('How to match the user against tasks. Defaults to any.'),
             'status' => $schema->string()->enum(['DONE', 'in progress', 'Upcoming', 'Wait for FBs'])->description('Optional status filter.'),
             'limit' => $schema->integer()->min(1)->max(100)->description('Max number of tasks to return. Defaults to 25.'),
+            'week_number' => $schema->integer()->min(1)->max(53)->description('Optional WF plan week number filter (1-53).'),
+            'current_week' => $schema->boolean()->description('If true, filters by current ISO week number.'),
         ];
     }
 }

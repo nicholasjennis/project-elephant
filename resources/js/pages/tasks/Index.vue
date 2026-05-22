@@ -79,7 +79,22 @@ const createForm = useForm({
     sku: '',
     phase_task: '',
     description: '',
+    theme: '',
+    import_year: '',
+    batch: '',
+    artwork_type: '',
     status: 'Upcoming' as 'DONE' | 'in progress' | 'Upcoming' | 'Wait for FBs',
+    quantity: '',
+    wf_plan_week: '',
+    pv_date_raw: '',
+    assets_status: '' as '' | 'Not ready' | 'Ready' | 'Blanks',
+    priority: '',
+    wip: '',
+    start_date_week: '',
+    ready_to_check_week: '',
+    gpm_note: '',
+    gd_notes: '',
+    job_number: '',
     due_date: '',
     designer_ids: [] as number[],
 });
@@ -244,7 +259,29 @@ function submitCreate(): void {
     createForm.post('/tasks', {
         preserveScroll: true,
         onSuccess: () => {
-            createForm.reset('sku', 'phase_task', 'description', 'due_date', 'designer_ids');
+            createForm.reset(
+                'sku',
+                'phase_task',
+                'description',
+                'theme',
+                'import_year',
+                'batch',
+                'artwork_type',
+                'status',
+                'quantity',
+                'wf_plan_week',
+                'pv_date_raw',
+                'assets_status',
+                'priority',
+                'wip',
+                'start_date_week',
+                'ready_to_check_week',
+                'gpm_note',
+                'gd_notes',
+                'job_number',
+                'due_date',
+                'designer_ids',
+            );
             designerSearch.value = '';
             isCreateModalOpen.value = false;
         },
@@ -434,7 +471,7 @@ defineOptions({
                     <DialogTrigger as-child>
                         <Button>Create Task</Button>
                     </DialogTrigger>
-                    <DialogContent class="sm:max-w-2xl">
+                    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Create Task</DialogTitle>
                             <DialogDescription>
@@ -461,6 +498,26 @@ defineOptions({
                             </label>
 
                             <label class="grid gap-1 text-sm">
+                                <span>Theme</span>
+                                <input v-model="createForm.theme" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Year</span>
+                                <input v-model="createForm.import_year" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Batch</span>
+                                <input v-model="createForm.batch" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Artwork Type</span>
+                                <input v-model="createForm.artwork_type" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
                                 <span>Project Status</span>
                                 <select v-model="createForm.status" class="rounded-md border bg-white px-3 py-2">
                                     <option value="Upcoming">Upcoming</option>
@@ -473,6 +530,66 @@ defineOptions({
                             <label class="grid gap-1 text-sm">
                                 <span>Due date</span>
                                 <input v-model="createForm.due_date" class="rounded-md border bg-white px-3 py-2" type="date" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Quantity</span>
+                                <input v-model="createForm.quantity" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>WF Plan (Week)</span>
+                                <input v-model="createForm.wf_plan_week" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>PV Date</span>
+                                <input v-model="createForm.pv_date_raw" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Assets Status</span>
+                                <select v-model="createForm.assets_status" class="rounded-md border bg-white px-3 py-2">
+                                    <option value="">-</option>
+                                    <option value="Not ready">Not ready</option>
+                                    <option value="Ready">Ready</option>
+                                    <option value="Blanks">Blanks</option>
+                                </select>
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Priority</span>
+                                <input v-model="createForm.priority" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>WIP</span>
+                                <input v-model="createForm.wip" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Start Date (Week)</span>
+                                <input v-model="createForm.start_date_week" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Ready To Check (Week)</span>
+                                <input v-model="createForm.ready_to_check_week" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm">
+                                <span>Job Number</span>
+                                <input v-model="createForm.job_number" class="rounded-md border bg-white px-3 py-2" type="text" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm md:col-span-2">
+                                <span>GPM Note</span>
+                                <textarea v-model="createForm.gpm_note" class="min-h-20 rounded-md border bg-white px-3 py-2" />
+                            </label>
+
+                            <label class="grid gap-1 text-sm md:col-span-2">
+                                <span>GD Notes</span>
+                                <textarea v-model="createForm.gd_notes" class="min-h-20 rounded-md border bg-white px-3 py-2" />
                             </label>
 
                             <fieldset class="grid gap-2 text-sm md:col-span-2">

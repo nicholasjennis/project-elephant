@@ -22,9 +22,7 @@ class TaskController extends Controller
 {
     public function importView(): Response
     {
-        return Inertia::render('tasks/Import', [
-            'defaultSourcePath' => 'imports/GPM-Designer_Tracker_example data.xlsx',
-        ]);
+        return Inertia::render('tasks/Import');
     }
 
     public function index(Request $request): Response
@@ -69,7 +67,22 @@ class TaskController extends Controller
             'sku' => ['required', 'string', 'max:255'],
             'phase_task' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            'theme' => ['nullable', 'string', 'max:255'],
+            'import_year' => ['nullable', 'string', 'max:255'],
+            'batch' => ['nullable', 'string', 'max:255'],
+            'artwork_type' => ['nullable', 'string', 'max:255'],
             'status' => ['required', 'string', Rule::in($allowedProjectStatuses)],
+            'quantity' => ['nullable', 'string', 'max:255'],
+            'wf_plan_week' => ['nullable', 'string', 'max:255'],
+            'pv_date_raw' => ['nullable', 'string', 'max:255'],
+            'assets_status' => ['nullable', 'string', Rule::in(['Not ready', 'Ready', 'Blanks'])],
+            'priority' => ['nullable', 'string', 'max:255'],
+            'wip' => ['nullable', 'string', 'max:255'],
+            'start_date_week' => ['nullable', 'string', 'max:255'],
+            'ready_to_check_week' => ['nullable', 'string', 'max:255'],
+            'gpm_note' => ['nullable', 'string', 'max:5000'],
+            'gd_notes' => ['nullable', 'string', 'max:5000'],
+            'job_number' => ['nullable', 'string', 'max:255'],
             'due_date' => ['nullable', 'date'],
             'designer_ids' => ['required', 'array', 'min:1'],
             'designer_ids.*' => [
@@ -82,7 +95,22 @@ class TaskController extends Controller
             'sku' => $validated['sku'],
             'phase_task' => $validated['phase_task'],
             'description' => $validated['description'] ?? null,
+            'theme' => $validated['theme'] ?? null,
+            'import_year' => $validated['import_year'] ?? null,
+            'batch' => $validated['batch'] ?? null,
+            'artwork_type' => $validated['artwork_type'] ?? null,
             'project_status' => $validated['status'],
+            'quantity' => $validated['quantity'] ?? null,
+            'wf_plan_week' => $validated['wf_plan_week'] ?? null,
+            'pv_date_raw' => $validated['pv_date_raw'] ?? null,
+            'assets_status' => $validated['assets_status'] ?? null,
+            'priority' => $validated['priority'] ?? null,
+            'wip' => $validated['wip'] ?? null,
+            'start_date_week' => $validated['start_date_week'] ?? null,
+            'ready_to_check_week' => $validated['ready_to_check_week'] ?? null,
+            'gpm_note' => $validated['gpm_note'] ?? null,
+            'gd_notes' => $validated['gd_notes'] ?? null,
+            'job_number' => $validated['job_number'] ?? null,
             'due_date' => $validated['due_date'] ?? null,
             'gpm_user_id' => $request->user()->id,
         ]);
@@ -164,14 +192,11 @@ class TaskController extends Controller
         abort_unless($request->user()?->role === 'gpm', 403);
 
         $validated = $request->validate([
-            'source_path' => ['nullable', 'string', 'max:500', 'required_without:source_file'],
-            'source_file' => ['nullable', 'file', 'mimes:xlsx,csv', 'required_without:source_path'],
+            'source_file' => ['required', 'file', 'mimes:xlsx,csv'],
         ]);
 
-        $filePath = $this->resolveImportFilePath(
-            $validated['source_path'] ?? null,
-            $request->file('source_file'),
-        );
+        $sourceFile = $validated['source_file'];
+        $filePath = $this->resolveImportFilePath($sourceFile);
 
         if (! is_file($filePath)) {
             return back()->withErrors([
@@ -179,7 +204,7 @@ class TaskController extends Controller
             ]);
         }
 
-        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $extension = strtolower($sourceFile->getClientOriginalExtension());
 
         if (! in_array($extension, ['xlsx', 'csv'], true)) {
             return back()->withErrors([
@@ -296,44 +321,11 @@ class TaskController extends Controller
         return back()->with('success', "Import complete. Created: {$created}, Updated: {$updated}, Skipped: {$skipped}.");
     }
 
-    private function resolveImportFilePath(?string $sourcePath, ?UploadedFile $sourceFile): string
+    private function resolveImportFilePath(UploadedFile $sourceFile): string
     {
-        if ($sourceFile instanceof UploadedFile) {
-            $storedPath = $sourceFile->storeAs(
-                'imports',
-                now()->format('Ymd_His').'_'.Str::random(8).'_'.$sourceFile->getClientOriginalName(),
-            );
+        $realPath = $sourceFile->getRealPath();
 
-            if (! is_string($storedPath) || $storedPath === '') {
-                return '';
-            }
-
-            return storage_path('app/'.$storedPath);
-        }
-
-        if (! is_string($sourcePath) || trim($sourcePath) === '') {
-            return '';
-        }
-
-        return $this->resolveImportPath($sourcePath);
-    }
-
-    private function resolveImportPath(string $sourcePath): string
-    {
-        $normalized = str_replace('\\', '/', trim($sourcePath));
-        $storageAppPath = rtrim(storage_path('app'), '/');
-
-        if (str_starts_with($normalized, $storageAppPath.'/')) {
-            return $normalized;
-        }
-
-        $relative = ltrim($normalized, '/');
-
-        if (! str_starts_with($relative, 'imports/')) {
-            $relative = 'imports/'.$relative;
-        }
-
-        return $storageAppPath.'/'.$relative;
+        return is_string($realPath) ? $realPath : '';
     }
 
     /**

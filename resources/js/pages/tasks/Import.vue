@@ -4,12 +4,7 @@ import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import { dashboard } from '@/routes';
 
-const props = defineProps<{
-    defaultSourcePath: string;
-}>();
-
 const importForm = useForm({
-    source_path: props.defaultSourcePath,
     source_file: null as File | null,
 });
 const page = usePage();
@@ -55,7 +50,7 @@ defineOptions({
         <section class="rounded-xl border border-sidebar-border/70 bg-background p-4">
             <h1 class="text-lg font-semibold">Import Tasks</h1>
             <p class="mt-1 text-sm text-muted-foreground">
-                Import `.xlsx` or `.csv` by uploading a file, or use a path from `storage/app/imports`.
+                Import `.xlsx` or `.csv` by uploading a file.
             </p>
 
             <div v-if="successMessage" class="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -66,7 +61,7 @@ defineOptions({
                 {{ importError }}
             </div>
 
-            <form class="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" @submit.prevent="submitImport">
+            <form class="mt-4 grid gap-3" @submit.prevent="submitImport">
                 <label class="grid gap-1 text-sm">
                     <span>Upload file (`.xlsx` or `.csv`)</span>
                     <input
@@ -77,17 +72,7 @@ defineOptions({
                     />
                     <span v-if="importForm.errors.source_file" class="text-xs text-red-600">{{ importForm.errors.source_file }}</span>
                 </label>
-                <label class="grid gap-1 text-sm">
-                    <span>Import source path (`storage/app` relative)</span>
-                    <input
-                        v-model="importForm.source_path"
-                        class="rounded-md border px-3 py-2"
-                        type="text"
-                        placeholder="imports/GPM-Designer_Tracker_example data.xlsx"
-                    />
-                    <span v-if="importForm.errors.source_path" class="text-xs text-red-600">{{ importForm.errors.source_path }}</span>
-                </label>
-                <div class="flex items-end md:col-span-2">
+                <div class="flex items-end">
                     <Button type="submit" :disabled="importForm.processing">Import File</Button>
                 </div>
             </form>
